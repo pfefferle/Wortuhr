@@ -6,6 +6,7 @@ class Mqtt {
 private:
     void reInit();
     static void callback(char *topic, byte *payload, unsigned int length);
+    static void textCallback(char *topic, byte *payload, unsigned int length);
     static void processState(const JsonDocument &doc);
     static void processEffect(const JsonDocument &doc);
     static void processScrollingText(const JsonDocument &doc);
@@ -20,7 +21,9 @@ public:
     void init();
     void loop();
     void sendState();
+    void sendTextState();
     void sendDiscovery();
+    void sendTextDiscovery();
 
     bool isConnected();
 };

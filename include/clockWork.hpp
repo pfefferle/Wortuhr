@@ -1406,6 +1406,7 @@ void ClockWork::loop(struct tm &tm) {
 
     case COMMAND_SET_MQTT_HA_DISCOVERY: {
         mqtt.sendDiscovery();
+        mqtt.sendTextDiscovery();
         break;
     }
 

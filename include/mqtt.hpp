@@ -154,6 +154,11 @@ None
 void Mqtt::processScrollingText(const JsonDocument &doc) {
     if (doc.containsKey("scrolling_text")) {
         strcpy(G.scrollingText, doc["scrolling_text"]);
+        // Automatically switch to scrolling text mode
+        G.prog = COMMAND_MODE_SCROLLINGTEXT;
+        G.progInit = true;
+        // Update text state for Home Assistant
+        sendTextStateUpdate();
     }
 }
 
@@ -278,9 +283,22 @@ void Mqtt::init() {
         // Publish online status
         mqttClient.publish(availabilityTopic.c_str(), "online", true);
         delay(50);
+
+        // Send discovery messages for Home Assistant
+        sendDiscovery();
+        delay(50);
+        sendTextDiscovery();
+        delay(50);
+
+        // Publish initial text state
+        sendTextState();
+        delay(50);
     }
 
+    // Subscribe to command topics
     mqttClient.subscribe((std::string(G.mqtt.topic) + "/cmd").c_str());
+    delay(50);
+    mqttClient.subscribe((std::string(G.mqtt.topic) + "/text/cmd").c_str());
     delay(50);
 }
 
@@ -389,6 +407,17 @@ None
 */
 
 void Mqtt::callback(char *topic, byte *payload, unsigned int length) {
+    // Check if this is a text command
+    std::string topicStr(topic);
+    std::string textCmdTopic = std::string(G.mqtt.topic) + "/text/cmd";
+
+    if (topicStr == textCmdTopic) {
+        // Handle text command directly
+        textCallback(topic, payload, length);
+        return;
+    }
+
+    // Handle regular JSON commands
     StaticJsonDocument<512> doc;
 
     // Convert payload to a null-terminated string
@@ -437,7 +466,7 @@ None
 */
 
 void Mqtt::sendState() {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
 
     doc["state"] = (led.getState()) ? "ON" : "OFF";
 
@@ -450,7 +479,12 @@ void Mqtt::sendState() {
     doc["color_mode"] = "hs";
     doc["effect"] = getEffectName();
 
-    char buffer[256];
+    // Include scrolling text if in scrolling text mode
+    if (G.prog == COMMAND_MODE_SCROLLINGTEXT && strlen(G.scrollingText) > 0) {
+        doc["scrolling_text"] = G.scrollingText;
+    }
+
+    char buffer[384];
     serializeJson(doc, buffer);
     mqttClient.publish((std::string(G.mqtt.topic) + "/status").c_str(), buffer,
                        true);
@@ -556,4 +590,118 @@ void Mqtt::sendDiscovery() {
                         std::string("/light/config"))
                            .c_str(),
                        buffer, true);
+}
+
+//------------------------------------------------------------------------------
+
+/* Description:
+
+This function publishes an MQTT discovery message for Home Assistant,
+configuring a text entity for scrolling text input. This allows users to
+set the scrolling text directly from the Home Assistant UI.
+
+Input:
+
+None
+
+Output:
+
+None
+*/
+
+void Mqtt::sendTextDiscovery() {
+
+    StaticJsonDocument<512> root;
+    mqttClient.setBufferSize(512);
+
+    root["name"] = std::string(G.mqtt.clientId) + " Scrolling Text";
+    root["icon"] = "mdi:text-box";
+    root["mode"] = "text";
+
+    root["command_topic"] = std::string(G.mqtt.topic) + "/text/cmd";
+    root["state_topic"] = std::string(G.mqtt.topic) + "/text/state";
+    root["availability_topic"] = std::string(G.mqtt.topic) + "/availability";
+
+    root["min"] = 1;
+    root["max"] = 30;  // PAYLOAD_LENGTH from Uhr.h
+
+    root["unique_id"] = WiFi.macAddress() + String("_scrolling_text");
+
+    // Link to the same device as the light
+    JsonObject device = root.createNestedObject("device");
+    JsonArray identifiers = device.createNestedArray("identifiers");
+    identifiers.add(G.mqtt.topic);
+    device["name"] = G.mqtt.clientId;
+    device["sw_version"] = VERSION;
+    device["configuration_url"] = "http://" + WiFi.localIP().toString();
+
+    char buffer[512];
+    serializeJson(root, buffer);
+    mqttClient.publish((std::string(HOMEASSISTANT_DISCOVERY_TOPIC) +
+                        std::string("/text/") + std::string(G.mqtt.topic) +
+                        std::string("_scrolling_text/config"))
+                           .c_str(),
+                       buffer, true);
+}
+
+//------------------------------------------------------------------------------
+
+/* Description:
+
+This function handles incoming MQTT messages on the text command topic.
+When text is received, it sets the scrolling text and switches to scrolling
+text mode.
+
+Input:
+
+- topic: MQTT topic (unused in this implementation)
+- payload: Raw text payload
+- length: Length of the payload
+
+Output:
+
+None
+*/
+
+void Mqtt::textCallback(char *topic, byte *payload, unsigned int length) {
+    // Ensure the text fits in the buffer
+    if (length >= PAYLOAD_LENGTH) {
+        length = PAYLOAD_LENGTH - 1;
+    }
+
+    // Copy text to scrolling text buffer
+    memcpy(G.scrollingText, payload, length);
+    G.scrollingText[length] = '\0';
+
+    Serial.print("Received scrolling text: ");
+    Serial.println(G.scrollingText);
+
+    // Automatically switch to scrolling text mode
+    G.prog = COMMAND_MODE_SCROLLINGTEXT;
+    G.progInit = true;
+
+    // Send state updates
+    sendTextStateUpdate();
+    sendMQTTUpdate();
+}
+
+//------------------------------------------------------------------------------
+
+/* Description:
+
+This function publishes the current scrolling text to the MQTT state topic.
+This allows Home Assistant to display the current text value.
+
+Input:
+
+None
+
+Output:
+
+None
+*/
+
+void Mqtt::sendTextState() {
+    mqttClient.publish((std::string(G.mqtt.topic) + "/text/state").c_str(),
+                       G.scrollingText, true);
 }
