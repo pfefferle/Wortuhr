@@ -154,11 +154,6 @@ None
 void Mqtt::processScrollingText(const JsonDocument &doc) {
     if (doc.containsKey("scrolling_text")) {
         strcpy(G.scrollingText, doc["scrolling_text"]);
-        // Automatically switch to scrolling text mode
-        G.prog = COMMAND_MODE_SCROLLINGTEXT;
-        G.progInit = true;
-        // Update text state for Home Assistant
-        sendTextStateUpdate();
     }
 }
 
@@ -676,12 +671,7 @@ void Mqtt::textCallback(char *topic, byte *payload, unsigned int length) {
     Serial.print("Received scrolling text: ");
     Serial.println(G.scrollingText);
 
-    // Automatically switch to scrolling text mode
-    G.prog = COMMAND_MODE_SCROLLINGTEXT;
-    G.progInit = true;
-
-    // Send state updates
-    sendTextStateUpdate();
+    // Send state update
     sendMQTTUpdate();
 }
 
