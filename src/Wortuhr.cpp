@@ -146,6 +146,8 @@ void sendMQTTUpdate() {
     // send status update via MQTT
     if ((G.mqtt.state) && (WiFi.status() == WL_CONNECTED)) {
         mqtt.sendState();
+        // Also send text state to keep Home Assistant in sync
+        mqtt.sendTextState();
     }
 }
 

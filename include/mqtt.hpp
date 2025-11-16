@@ -671,7 +671,12 @@ void Mqtt::textCallback(char *topic, byte *payload, unsigned int length) {
     Serial.print("Received scrolling text: ");
     Serial.println(G.scrollingText);
 
-    // Send state update
+    // Mark that scrolling text has changed (triggers re-init if in scrolling mode)
+    if (G.prog == COMMAND_MODE_SCROLLINGTEXT) {
+        G.progInit = true;
+    }
+
+    // Send state updates (both general state and text state)
     sendMQTTUpdate();
 }
 
